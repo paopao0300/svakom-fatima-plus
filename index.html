@@ -277,7 +277,7 @@
                     const response = await fetch(url, {
                         method: 'GET', // 根据你的MCP规范可能需要 POST
                         headers: {
-                            'Authorization': password,
+                            'Authorization': 'Bearer ' + password, // <--- 这里修改了
                             'Content-Type': 'application/json'
                         }
                     });
