@@ -25,8 +25,8 @@
     <div class="card">
         <h1>🔗 连接设置</h1>
         <div class="form-group">
-            <label for="mcpUrl">MCP 服务器地址 (需含 http://):</label>
-            <input type="text" id="mcpUrl" value="http://127.0.0.1:3000" placeholder="例如: http://127.0.0.1:3000">
+            <label for="mcpUrl">MCP 服务器地址:</label>
+            <input type="text" id="mcpUrl" value="https://ble-relay-template-production-37e3.up.railway.app" placeholder="请输入 MCP 服务器地址">
         </div>
         <button id="btnConnectBT">1. 连接蓝牙 (SL278H)</button>
         <button id="btnStartMCP">2. 启动 MCP 轮询</button>
@@ -80,7 +80,6 @@
     <video src="https://img.baibai.cv/f/dZymTQ/30min-osbvow%202.mp4" loop autoplay playsinline muted style="display:none;"></video>
 
     <script>
-        // 蓝牙配置参数 (必须使用字符串格式)
         const DEVICE_NAME = 'SL278H';
         const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
         const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
@@ -98,7 +97,7 @@
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // ================= 蓝牙连接逻辑 =================
+        // 蓝牙连接逻辑
         document.getElementById('btnConnectBT').addEventListener('click', async () => {
             try {
                 addLog('正在请求蓝牙设备...');
@@ -127,7 +126,7 @@
             }
         });
 
-        // ================= 指令发送逻辑 =================
+        // 指令发送逻辑
         async function sendToyCommand(action, value) {
             if (!gattCharacteristic) {
                 addLog('⚠️ 蓝牙未连接，无法发送指令。');
@@ -137,21 +136,15 @@
             let dataArray;
             const val = parseInt(value, 10);
 
-            // 指令生成：如果不生效，请根据实际蓝牙抓包记录替换以下数组
             if (action.toLowerCase() === 'vibrate') {
-                // 震动
                 dataArray = new Uint8Array([0x55, 0x04, 0x03, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'oscillate') {
-                // 伸缩
                 dataArray = new Uint8Array([0x55, 0x04, 0x04, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'rotate') {
-                // 转动 (推测协议指令位为0x05)
                 dataArray = new Uint8Array([0x55, 0x04, 0x05, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'heat') {
-                // 加热 (推测协议指令位为0x06)
                 dataArray = new Uint8Array([0x55, 0x04, 0x06, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'stop') {
-                // 停止所有格式
                 dataArray = new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x00, 0x00]);
             } else {
                 addLog(`⚠️ 未知功能: ${action}`);
@@ -160,14 +153,13 @@
 
             try {
                 await gattCharacteristic.writeValue(dataArray);
-                // 静默运行时，只有在收到有效指令时才打印日志
                 addLog(`📤 发送指令: ${action} = ${val}`);
             } catch (error) {
                 addLog(`❌ 发送失败: ${error.message}`);
             }
         }
 
-        // ================= MCP 轮询逻辑 =================
+        // MCP 轮询逻辑
         async function pollMCP() {
             if (!isPolling) return;
 
@@ -178,7 +170,6 @@
                 if (response.ok) {
                     const json = await response.json();
                     
-                    // 如果返回 {"command": null}，静默跳过，不打日志
                     if (json.command && json.command !== null) {
                         const action = json.command.action;
                         const value = json.command.value;
@@ -191,7 +182,6 @@
                 addLog(`❌ 轮询出错: ${error.message}`);
             }
 
-            // 300ms 轮询间隔
             if (isPolling) {
                 pollTimer = setTimeout(pollMCP, 300);
             }
@@ -213,27 +203,16 @@
             addLog('⏹ MCP 轮询已停止。');
         });
 
-        // ================= 界面控制逻辑 =================
+        // 界面滑动控制
         const vibeSlider = document.getElementById('vibrateSlider');
         const oscSlider = document.getElementById('oscillateSlider');
         const rotSlider = document.getElementById('rotateSlider');
         const heatSlider = document.getElementById('heatSlider');
         
-        vibeSlider.addEventListener('input', (e) => {
-            document.getElementById('vibrateValue').innerText = e.target.value;
-        });
-        
-        oscSlider.addEventListener('input', (e) => {
-            document.getElementById('oscillateValue').innerText = e.target.value;
-        });
-
-        rotSlider.addEventListener('input', (e) => {
-            document.getElementById('rotateValue').innerText = e.target.value;
-        });
-
-        heatSlider.addEventListener('input', (e) => {
-            document.getElementById('heatValue').innerText = e.target.value == "1" ? "开 (1)" : "关 (0)";
-        });
+        vibeSlider.addEventListener('input', (e) => { document.getElementById('vibrateValue').innerText = e.target.value; });
+        oscSlider.addEventListener('input', (e) => { document.getElementById('oscillateValue').innerText = e.target.value; });
+        rotSlider.addEventListener('input', (e) => { document.getElementById('rotateValue').innerText = e.target.value; });
+        heatSlider.addEventListener('input', (e) => { document.getElementById('heatValue').innerText = e.target.value == "1" ? "开 (1)" : "关 (0)"; });
 
         document.getElementById('btnTest').addEventListener('click', async () => {
             const v = vibeSlider.value;
@@ -247,23 +226,17 @@
             if (r > 0) { await sendToyCommand('rotate', r); tested = true; }
             if (h > 0) { await sendToyCommand('heat', h); tested = true; }
             
-            if (!tested) addLog('⚠️ 请先拖动滑块设置测试力度/开启功能。');
+            if (!tested) addLog('⚠️ 请先拖动滑块设置测试力度。');
         });
 
         document.getElementById('btnStopToy').addEventListener('click', async () => {
-            vibeSlider.value = 0;
-            oscSlider.value = 0;
-            rotSlider.value = 0;
-            heatSlider.value = 0;
-            
+            vibeSlider.value = 0; oscSlider.value = 0; rotSlider.value = 0; heatSlider.value = 0;
             document.getElementById('vibrateValue').innerText = '0';
             document.getElementById('oscillateValue').innerText = '0';
             document.getElementById('rotateValue').innerText = '0';
             document.getElementById('heatValue').innerText = '0';
-            
             await sendToyCommand('stop', 0);
         });
-
     </script>
 </body>
 </html>
