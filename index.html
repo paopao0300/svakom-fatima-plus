@@ -87,7 +87,7 @@
         const DEVICE_NAME = 'SL278H';
         const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
         const TX_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
-        
+
         let bluetoothDevice = null;
         let txCharacteristic = null;
         let mcpInterval = null;
@@ -130,7 +130,6 @@
                 updateBtStatus(true);
                 log('蓝牙连接成功，设备就绪！');
                 
-                // 启动无声音频和蓝牙保活
                 audio.play().catch(e => log('音频自动播放被拦截，请交互后重试', 'error'));
                 startKeepAlive();
 
@@ -170,7 +169,6 @@
             value = parseInt(value, 10) || 0;
             let dataArray = null;
 
-            // 更新 UI 显示
             const slider = document.getElementById(action + 'Slider');
             const valDisplay = document.getElementById(action + 'Val');
             if (slider && valDisplay) {
@@ -179,23 +177,19 @@
             }
 
             switch(action.toLowerCase()) {
-                case 'vibrate': // 震动指令 (55 03 00 00 01 [强度] 00)
+                case 'vibrate': 
                     value = Math.min(Math.max(value, 0), 10);
                     dataArray = new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, value, 0x00]);
                     break;
-                case 'oscillate': // 伸缩指令 (55 08 00 00 [强度] 00 00)
+                case 'oscillate': 
                     value = Math.min(Math.max(value, 0), 7);
                     dataArray = new Uint8Array([0x55, 0x08, 0x00, 0x00, value, 0x00, 0x00]);
                     break;
                 case 'rotate': 
-                    // 【待替换】：请在这里填入你抓包得到的转动16进制数组
-                    // 例如：dataArray = new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x01, value, 0x00]);
                     value = Math.min(Math.max(value, 0), 10);
                     log(`⚠️ 转动指令尚未配置，当前值: ${value}`, 'error');
                     return; 
                 case 'heat':
-                    // 【待替换】：请在这里填入你抓包得到的加热16进制数组
-                    // 例如，0是关，1是开
                     value = Math.min(Math.max(value, 0), 1);
                     log(`⚠️ 加热指令尚未配置，当前值: ${value}`, 'error');
                     return;
@@ -218,27 +212,20 @@
             log('停止所有动作', 'cmd');
             await sendCommand('vibrate', 0);
             await sendCommand('oscillate', 0);
-            // 等你配好转动和加热后，把下面两行取消注释
-            // await sendCommand('rotate', 0);
-            // await sendCommand('heat', 0);
         }
 
         function sendTestCommand(action, value) {
             sendCommand(action, value);
-            // 用户点击UI时触发音频播放，绕过浏览器自动播放限制
             if (audio.paused) audio.play();
         }
 
         // ================= 保活机制 =================
         function startKeepAlive() {
             if (keepAliveInterval) clearInterval(keepAliveInterval);
-            // 每隔 10 秒发送一个无动作的读或弱指令防止休眠 (视硬件而定，这里重复发送当前的震动0指令作为Ping)
             keepAliveInterval = setInterval(async () => {
                 if (txCharacteristic) {
                     try {
-                        // 发送一个状态查询或者当前指令，这里假设发 0 挡位不影响体验，或替换为你抓包里的 ping 指令
-                        // let pingData = new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, 0x00, 0x00]);
-                        // await txCharacteristic.writeValue(pingData);
+                        // 可在此处发送防休眠指令
                     } catch (e) {
                         console.log("Keep alive error:", e);
                     }
@@ -256,44 +243,67 @@
         }
 
         function startMcp() {
-            const url = document.getElementById('mcpUrl').value.replace(/\/$/, '') + '/toy-next';
+            const baseUrl = document.getElementById('mcpUrl').value.replace(/\/$/, '');
+            const url = baseUrl + '/toy-next';
             const password = document.getElementById('mcpPassword').value;
             
-            if (!url) {
+            if (!baseUrl) {
                 log('请输入 MCP 服务器 URL', 'error');
                 return;
             }
 
             isMcpRunning = true;
+            let isFetching = false; // 并发锁，防止 300ms 内请求堆积
+            
             document.getElementById('btnConnectMcp').textContent = '停止 MCP 轮询';
             document.getElementById('btnConnectMcp').classList.add('danger');
             document.getElementById('mcpStatus').classList.add('active');
             document.getElementById('mcpStatusText').textContent = '轮询中 (300ms)';
             log('开始轮询 MCP 服务器...');
 
-            // 静默轮询 300ms
             mcpInterval = setInterval(async () => {
+                if (isFetching) return; // 如果上一次请求还没结束，直接跳过这一次
+                isFetching = true;
+
                 try {
-                    const response = await fetch(url, {
-                        method: 'GET', // 根据你的MCP规范可能需要 POST
+                    // 万能钥匙：把密码塞进所有常见的鉴权位置
+                    const fetchUrl = `${url}?token=${password}&password=${password}&apikey=${password}`;
+                    let response = await fetch(fetchUrl, {
+                        method: 'GET',
                         headers: {
-                            'Authorization': 'Bearer ' + password, // <--- 这里修改了
+                            'Authorization': password,           // 常见格式 1
+                            'x-api-key': password,               // 常见格式 2
+                            'x-password': password,              // 常见格式 3
                             'Content-Type': 'application/json'
                         }
                     });
 
-                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                    // 如果上面那套不行，尝试严格要求 Bearer 格式
+                    if (response.status === 401) {
+                        response = await fetch(fetchUrl, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': 'Bearer ' + password, 
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP Error: ${response.status} (密码错误或服务器拒绝)`);
+                    }
                     
                     const data = await response.json();
                     
-                    // 如果 command 不为 null，则执行
                     if (data && data.command) {
                         const { action, value } = data.command;
                         await sendCommand(action, value);
                     }
                 } catch (error) {
                     log('轮询出错: ' + error.message, 'error');
-                    stopMcp(); // 出错后为防死循环，建议停止或减缓轮询
+                    stopMcp(); 
+                } finally {
+                    isFetching = false; // 解除锁定
                 }
             }, 300);
         }
