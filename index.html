@@ -34,7 +34,8 @@
         </div>
         <div class="form-group">
             <label>连接密码</label>
-            <input type="password" id="mcpPassword" value="896258">
+            <!-- 默认密码已经帮你改成了 123456 -->
+            <input type="password" id="mcpPassword" value="123456">
         </div>
         <button id="btnConnectMcp" onclick="toggleMcp()">启动 MCP 轮询</button>
         <div><span class="status-dot" id="mcpStatus"></span> 服务器状态: <span id="mcpStatusText">未连接</span></div>
@@ -225,7 +226,7 @@
             keepAliveInterval = setInterval(async () => {
                 if (txCharacteristic) {
                     try {
-                        // 可在此处发送防休眠指令
+                        // 防休眠空转
                     } catch (e) {
                         console.log("Keep alive error:", e);
                     }
@@ -252,8 +253,13 @@
                 return;
             }
 
+            // 防重复点击导致堆积
+            if (mcpInterval) {
+                clearInterval(mcpInterval);
+            }
+
             isMcpRunning = true;
-            let isFetching = false; // 并发锁，防止 300ms 内请求堆积
+            let isFetching = false;
             
             document.getElementById('btnConnectMcp').textContent = '停止 MCP 轮询';
             document.getElementById('btnConnectMcp').classList.add('danger');
@@ -262,40 +268,31 @@
             log('开始轮询 MCP 服务器...');
 
             mcpInterval = setInterval(async () => {
-                if (isFetching) return; // 如果上一次请求还没结束，直接跳过这一次
+                if (isFetching) return; 
                 isFetching = true;
 
                 try {
-                    // 万能钥匙：把密码塞进所有常见的鉴权位置
-                    const fetchUrl = `${url}?token=${password}&password=${password}&apikey=${password}`;
-                    let response = await fetch(fetchUrl, {
+                    // 大部分中继模板标准的鉴权头
+                    const response = await fetch(url, {
                         method: 'GET',
                         headers: {
-                            'Authorization': password,           // 常见格式 1
-                            'x-api-key': password,               // 常见格式 2
-                            'x-password': password,              // 常见格式 3
+                            'Authorization': password,
+                            'x-password': password, // 兼容部分老模板
                             'Content-Type': 'application/json'
                         }
                     });
 
-                    // 如果上面那套不行，尝试严格要求 Bearer 格式
                     if (response.status === 401) {
-                        response = await fetch(fetchUrl, {
-                            method: 'GET',
-                            headers: {
-                                'Authorization': 'Bearer ' + password, 
-                                'Content-Type': 'application/json'
-                            }
-                        });
+                        throw new Error(`HTTP Error: 401 (密码验证失败，请确认 Railway 上环境变量确实是 ${password}，且没有空格)`);
                     }
-
                     if (!response.ok) {
-                        throw new Error(`HTTP Error: ${response.status} (密码错误或服务器拒绝)`);
+                        throw new Error(`HTTP Error: ${response.status}`);
                     }
                     
                     const data = await response.json();
                     
-                    if (data && data.command) {
+                    // 数据解析：只在收到有效指令时触发
+                    if (data && data.command && data.command.action) {
                         const { action, value } = data.command;
                         await sendCommand(action, value);
                     }
@@ -303,14 +300,17 @@
                     log('轮询出错: ' + error.message, 'error');
                     stopMcp(); 
                 } finally {
-                    isFetching = false; // 解除锁定
+                    isFetching = false;
                 }
             }, 300);
         }
 
         function stopMcp() {
             isMcpRunning = false;
-            clearInterval(mcpInterval);
+            if (mcpInterval) {
+                clearInterval(mcpInterval);
+                mcpInterval = null;
+            }
             document.getElementById('btnConnectMcp').textContent = '启动 MCP 轮询';
             document.getElementById('btnConnectMcp').classList.remove('danger');
             document.getElementById('mcpStatus').classList.remove('active');
