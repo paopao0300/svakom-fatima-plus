@@ -3,260 +3,310 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Svakom Fatima Plus 蓝牙 MCP 中继 (完整版)</title>
+    <title>AI 玩具控制器 (MCP 蓝牙中继)</title>
     <style>
-        body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; color: #333; }
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h1, h2 { font-size: 1.2rem; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { margin-top: 0; color: #333; font-size: 1.2rem; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
         input[type="range"] { width: 100%; }
-        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; margin-right: 10px; margin-bottom: 10px; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 1rem; width: 100%; margin-bottom: 10px; }
         button:hover { background-color: #0056b3; }
         button.danger { background-color: #dc3545; }
         button.danger:hover { background-color: #c82333; }
-        #logArea { background: #1e1e1e; color: #00ff00; padding: 10px; border-radius: 5px; height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; }
-        .flex { display: flex; align-items: center; justify-content: space-between; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .control-item { background: #f1f3f5; padding: 15px; border-radius: 8px; text-align: center; }
+        #logArea { width: 100%; height: 200px; background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 10px; box-sizing: border-box; border-radius: 6px; overflow-y: auto; font-size: 0.85rem; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #ccc; margin-right: 5px; }
+        .status-dot.active { background-color: #28a745; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>🔗 连接设置</h1>
+        <h2>1. 连接 MCP 服务器</h2>
         <div class="form-group">
-            <label for="mcpUrl">MCP 服务器地址:</label>
+            <label>服务器 URL (无需加 /toy-next)</label>
             <input type="text" id="mcpUrl" value="https://ble-relay-template-production-37e3.up.railway.app">
         </div>
         <div class="form-group">
-            <label for="mcpPassword">连接密码 (Authorization Header):</label>
+            <label>连接密码</label>
             <input type="password" id="mcpPassword" value="896258">
         </div>
-        <button id="btnConnectBT">1. 连接蓝牙 (SL278H)</button>
-        <button id="btnStartMCP">2. 启动 MCP 轮询</button>
-        <button id="btnStopMCP" class="danger" style="display:none;">停止 MCP 轮询</button>
+        <button id="btnConnectMcp" onclick="toggleMcp()">启动 MCP 轮询</button>
+        <div><span class="status-dot" id="mcpStatus"></span> 服务器状态: <span id="mcpStatusText">未连接</span></div>
     </div>
 
     <div class="card">
-        <h1>🎮 手动控制与测试</h1>
-        
-        <div class="form-group">
-            <div class="flex">
-                <label for="vibrateSlider">震动 (0 - 10)</label>
-                <span id="vibrateValue">0</span>
-            </div>
-            <input type="range" id="vibrateSlider" min="0" max="10" value="0">
-        </div>
-        
-        <div class="form-group">
-            <div class="flex">
-                <label for="oscillateSlider">伸缩 (0 - 7)</label>
-                <span id="oscillateValue">0</span>
-            </div>
-            <input type="range" id="oscillateSlider" min="0" max="7" value="0">
-        </div>
-
-        <div class="form-group">
-            <div class="flex">
-                <label for="rotateSlider">转动 (0 - 10)</label>
-                <span id="rotateValue">0</span>
-            </div>
-            <input type="range" id="rotateSlider" min="0" max="10" value="0">
-        </div>
-
-        <div class="form-group">
-            <div class="flex">
-                <label for="heatSlider">加热 (0 关, 1 开)</label>
-                <span id="heatValue">0</span>
-            </div>
-            <input type="range" id="heatSlider" min="0" max="1" value="0">
-        </div>
-
-        <button id="btnTest">发送测试</button>
-        <button id="btnStopToy" class="danger">⏹ 停止所有功能</button>
+        <h2>2. 连接蓝牙玩具 (SL278H)</h2>
+        <button id="btnConnectBt" onclick="connectBluetooth()">连接蓝牙设备</button>
+        <div><span class="status-dot" id="btStatus"></span> 蓝牙状态: <span id="btStatusText">未连接</span></div>
     </div>
 
     <div class="card">
-        <h1>📝 运行日志</h1>
+        <h2>3. 手动控制与测试</h2>
+        <div class="controls">
+            <div class="control-item">
+                <label>震动 (0-10)</label>
+                <input type="range" id="vibrateSlider" min="0" max="10" value="0" onchange="sendTestCommand('vibrate', this.value)">
+                <span id="vibrateVal">0</span>
+            </div>
+            <div class="control-item">
+                <label>伸缩/摆动 (0-7)</label>
+                <input type="range" id="oscillateSlider" min="0" max="7" value="0" onchange="sendTestCommand('oscillate', this.value)">
+                <span id="oscillateVal">0</span>
+            </div>
+            <div class="control-item">
+                <label>转动 (0-10)</label>
+                <input type="range" id="rotateSlider" min="0" max="10" value="0" onchange="sendTestCommand('rotate', this.value)">
+                <span id="rotateVal">0</span>
+            </div>
+            <div class="control-item">
+                <label>加热 (0-1)</label>
+                <input type="range" id="heatSlider" min="0" max="1" value="0" onchange="sendTestCommand('heat', this.value)">
+                <span id="heatVal">0</span>
+            </div>
+        </div>
+        <button class="danger" style="margin-top: 15px;" onclick="stopAll()">🛑 停止所有功能</button>
+    </div>
+
+    <div class="card">
+        <h2>运行日志</h2>
         <div id="logArea"></div>
     </div>
 
-    <video src="https://img.baibai.cv/f/dZymTQ/30min-osbvow%202.mp4" loop autoplay playsinline muted style="display:none;"></video>
+    <audio id="keepAliveAudio" loop playsinline>
+        <source src="https://img.baibai.cv/f/dZymTQ/30min-osbvow%202.mp4" type="audio/mp4">
+    </audio>
 
     <script>
         // 蓝牙配置参数
         const DEVICE_NAME = 'SL278H';
         const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
-        const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
-
+        const TX_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+        
         let bluetoothDevice = null;
-        let gattCharacteristic = null;
-        let isPolling = false;
-        let pollTimer = null;
+        let txCharacteristic = null;
+        let mcpInterval = null;
+        let isMcpRunning = false;
+        let keepAliveInterval = null;
 
         const logArea = document.getElementById('logArea');
+        const audio = document.getElementById('keepAliveAudio');
 
-        function addLog(msg) {
+        function log(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
-            logArea.innerHTML += `[${time}] ${msg}<br>`;
+            const div = document.createElement('div');
+            div.textContent = `[${time}] ${message}`;
+            if (type === 'error') div.style.color = '#ff4444';
+            if (type === 'cmd') div.style.color = '#00e5ff';
+            logArea.appendChild(div);
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // ================= 蓝牙连接逻辑 =================
-        document.getElementById('btnConnectBT').addEventListener('click', async () => {
+        // ================= 蓝牙核心逻辑 =================
+        async function connectBluetooth() {
             try {
-                addLog('正在请求蓝牙设备...');
+                log('请求蓝牙设备: ' + DEVICE_NAME);
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ name: DEVICE_NAME }],
                     optionalServices: [SERVICE_UUID]
                 });
 
-                bluetoothDevice.addEventListener('gattserverdisconnected', () => {
-                    addLog('❌ 蓝牙已断开连接！');
-                    gattCharacteristic = null;
-                });
-
-                addLog('正在连接 GATT 服务器...');
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                
+                log('连接 GATT 服务器...');
                 const server = await bluetoothDevice.gatt.connect();
-
-                addLog('正在获取蓝牙服务...');
+                
+                log('获取服务: ' + SERVICE_UUID);
                 const service = await server.getPrimaryService(SERVICE_UUID);
+                
+                log('获取写入特征值 (TX): ' + TX_CHAR_UUID);
+                txCharacteristic = await service.getCharacteristic(TX_CHAR_UUID);
+                
+                updateBtStatus(true);
+                log('蓝牙连接成功，设备就绪！');
+                
+                // 启动无声音频和蓝牙保活
+                audio.play().catch(e => log('音频自动播放被拦截，请交互后重试', 'error'));
+                startKeepAlive();
 
-                addLog('正在获取特征...');
-                gattCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
-
-                addLog('✅ 蓝牙连接成功！准备好接收指令。');
             } catch (error) {
-                addLog('❌ 蓝牙连接失败: ' + error.message);
+                log('蓝牙连接失败: ' + error, 'error');
+                updateBtStatus(false);
             }
-        });
+        }
+
+        function onDisconnected() {
+            log('蓝牙已断开连接！', 'error');
+            updateBtStatus(false);
+            txCharacteristic = null;
+            clearInterval(keepAliveInterval);
+        }
+
+        function updateBtStatus(connected) {
+            const dot = document.getElementById('btStatus');
+            const text = document.getElementById('btStatusText');
+            if (connected) {
+                dot.classList.add('active');
+                text.textContent = '已连接';
+                document.getElementById('btnConnectBt').textContent = '重新连接设备';
+            } else {
+                dot.classList.remove('active');
+                text.textContent = '未连接';
+            }
+        }
 
         // ================= 指令发送逻辑 =================
-        async function sendToyCommand(action, value) {
-            if (!gattCharacteristic) {
-                addLog('⚠️ 蓝牙未连接，无法发送指令。');
+        async function sendCommand(action, value) {
+            if (!txCharacteristic) {
+                log('未连接蓝牙设备，无法发送指令', 'error');
                 return;
             }
 
-            let dataArray;
-            const val = parseInt(value, 10);
+            value = parseInt(value, 10) || 0;
+            let dataArray = null;
 
-            if (action.toLowerCase() === 'vibrate') {
-                dataArray = new Uint8Array([0x55, 0x04, 0x03, 0x00, 0x01, val]);
-            } else if (action.toLowerCase() === 'oscillate') {
-                dataArray = new Uint8Array([0x55, 0x04, 0x04, 0x00, 0x01, val]);
-            } else if (action.toLowerCase() === 'rotate') {
-                // 注：推测格式，若无反应需替换为实际转动抓包指令
-                dataArray = new Uint8Array([0x55, 0x04, 0x05, 0x00, 0x01, val]); 
-            } else if (action.toLowerCase() === 'heat') {
-                // 注：推测格式，若无反应需替换为实际加热抓包指令
-                dataArray = new Uint8Array([0x55, 0x04, 0x06, 0x00, 0x01, val]); 
-            } else if (action.toLowerCase() === 'stop') {
-                dataArray = new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x00, 0x00]);
-            } else {
-                addLog(`⚠️ 未知功能: ${action}`);
-                return;
+            // 更新 UI 显示
+            const slider = document.getElementById(action + 'Slider');
+            const valDisplay = document.getElementById(action + 'Val');
+            if (slider && valDisplay) {
+                slider.value = value;
+                valDisplay.textContent = value;
+            }
+
+            switch(action.toLowerCase()) {
+                case 'vibrate': // 震动指令 (55 03 00 00 01 [强度] 00)
+                    value = Math.min(Math.max(value, 0), 10);
+                    dataArray = new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, value, 0x00]);
+                    break;
+                case 'oscillate': // 伸缩指令 (55 08 00 00 [强度] 00 00)
+                    value = Math.min(Math.max(value, 0), 7);
+                    dataArray = new Uint8Array([0x55, 0x08, 0x00, 0x00, value, 0x00, 0x00]);
+                    break;
+                case 'rotate': 
+                    // 【待替换】：请在这里填入你抓包得到的转动16进制数组
+                    // 例如：dataArray = new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x01, value, 0x00]);
+                    value = Math.min(Math.max(value, 0), 10);
+                    log(`⚠️ 转动指令尚未配置，当前值: ${value}`, 'error');
+                    return; 
+                case 'heat':
+                    // 【待替换】：请在这里填入你抓包得到的加热16进制数组
+                    // 例如，0是关，1是开
+                    value = Math.min(Math.max(value, 0), 1);
+                    log(`⚠️ 加热指令尚未配置，当前值: ${value}`, 'error');
+                    return;
+                default:
+                    log('未知指令类型: ' + action, 'error');
+                    return;
             }
 
             try {
-                await gattCharacteristic.writeValue(dataArray);
-                addLog(`📤 发送指令: ${action} = ${val}`);
+                if (dataArray) {
+                    await txCharacteristic.writeValue(dataArray);
+                    log(`执行 ${action}: ${value}`, 'cmd');
+                }
             } catch (error) {
-                addLog(`❌ 发送失败: ${error.message}`);
+                log(`发送指令失败: ${error}`, 'error');
             }
+        }
+
+        async function stopAll() {
+            log('停止所有动作', 'cmd');
+            await sendCommand('vibrate', 0);
+            await sendCommand('oscillate', 0);
+            // 等你配好转动和加热后，把下面两行取消注释
+            // await sendCommand('rotate', 0);
+            // await sendCommand('heat', 0);
+        }
+
+        function sendTestCommand(action, value) {
+            sendCommand(action, value);
+            // 用户点击UI时触发音频播放，绕过浏览器自动播放限制
+            if (audio.paused) audio.play();
+        }
+
+        // ================= 保活机制 =================
+        function startKeepAlive() {
+            if (keepAliveInterval) clearInterval(keepAliveInterval);
+            // 每隔 10 秒发送一个无动作的读或弱指令防止休眠 (视硬件而定，这里重复发送当前的震动0指令作为Ping)
+            keepAliveInterval = setInterval(async () => {
+                if (txCharacteristic) {
+                    try {
+                        // 发送一个状态查询或者当前指令，这里假设发 0 挡位不影响体验，或替换为你抓包里的 ping 指令
+                        // let pingData = new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, 0x00, 0x00]);
+                        // await txCharacteristic.writeValue(pingData);
+                    } catch (e) {
+                        console.log("Keep alive error:", e);
+                    }
+                }
+            }, 10000);
         }
 
         // ================= MCP 轮询逻辑 =================
-        async function pollMCP() {
-            if (!isPolling) return;
-
-            const baseUrl = document.getElementById('mcpUrl').value.replace(/\/$/, "");
-            const password = document.getElementById('mcpPassword').value;
-            
-            try {
-                // 构建请求头，携带密码
-                const headers = { 'Content-Type': 'application/json' };
-                if (password) {
-                    headers['Authorization'] = `Bearer ${password}`; 
-                    // 备用方案：如果服务器要求直接传密码而不是 Bearer 格式，可以使用 headers['Authorization'] = password;
-                }
-
-                const response = await fetch(`${baseUrl}/toy-next`, { headers });
-                
-                if (response.ok) {
-                    const json = await response.json();
-                    
-                    // 静默跳过空指令
-                    if (json.command && json.command !== null) {
-                        const action = json.command.action;
-                        const value = json.command.value;
-                        await sendToyCommand(action, value);
-                    }
-                } else {
-                    addLog(`❌ 轮询 HTTP 错误: ${response.status}`);
-                }
-            } catch (error) {
-                addLog(`❌ 轮询出错: ${error.message}`);
-            }
-
-            // 300ms 轮询间隔
-            if (isPolling) {
-                pollTimer = setTimeout(pollMCP, 300);
+        function toggleMcp() {
+            if (isMcpRunning) {
+                stopMcp();
+            } else {
+                startMcp();
             }
         }
 
-        document.getElementById('btnStartMCP').addEventListener('click', () => {
-            isPolling = true;
-            document.getElementById('btnStartMCP').style.display = 'none';
-            document.getElementById('btnStopMCP').style.display = 'inline-block';
-            addLog('✅ MCP 轮询已启动，每 300ms 检查一次...');
-            pollMCP();
-        });
-
-        document.getElementById('btnStopMCP').addEventListener('click', () => {
-            isPolling = false;
-            clearTimeout(pollTimer);
-            document.getElementById('btnStartMCP').style.display = 'inline-block';
-            document.getElementById('btnStopMCP').style.display = 'none';
-            addLog('⏹ MCP 轮询已停止。');
-        });
-
-        // ================= 界面控制逻辑 =================
-        const vibeSlider = document.getElementById('vibrateSlider');
-        const oscSlider = document.getElementById('oscillateSlider');
-        const rotateSlider = document.getElementById('rotateSlider');
-        const heatSlider = document.getElementById('heatSlider');
-        
-        vibeSlider.addEventListener('input', (e) => document.getElementById('vibrateValue').innerText = e.target.value);
-        oscSlider.addEventListener('input', (e) => document.getElementById('oscillateValue').innerText = e.target.value);
-        rotateSlider.addEventListener('input', (e) => document.getElementById('rotateValue').innerText = e.target.value);
-        heatSlider.addEventListener('input', (e) => document.getElementById('heatValue').innerText = e.target.value == 1 ? '开' : '关');
-
-        document.getElementById('btnTest').addEventListener('click', async () => {
-            const v = vibeSlider.value;
-            const o = oscSlider.value;
-            const r = rotateSlider.value;
-            const h = heatSlider.value;
+        function startMcp() {
+            const url = document.getElementById('mcpUrl').value.replace(/\/$/, '') + '/toy-next';
+            const password = document.getElementById('mcpPassword').value;
             
-            let sent = false;
-            if (v > 0) { await sendToyCommand('vibrate', v); sent = true; }
-            if (o > 0) { await sendToyCommand('oscillate', o); sent = true; }
-            if (r > 0) { await sendToyCommand('rotate', r); sent = true; }
-            if (h > 0) { await sendToyCommand('heat', h); sent = true; }
-            
-            if (!sent) addLog('⚠️ 请先拖动至少一个滑块来设置测试力度。');
-        });
+            if (!url) {
+                log('请输入 MCP 服务器 URL', 'error');
+                return;
+            }
 
-        document.getElementById('btnStopToy').addEventListener('click', async () => {
-            vibeSlider.value = 0; oscSlider.value = 0;
-            rotateSlider.value = 0; heatSlider.value = 0;
-            document.getElementById('vibrateValue').innerText = '0';
-            document.getElementById('oscillateValue').innerText = '0';
-            document.getElementById('rotateValue').innerText = '0';
-            document.getElementById('heatValue').innerText = '关';
-            await sendToyCommand('stop', 0);
-        });
+            isMcpRunning = true;
+            document.getElementById('btnConnectMcp').textContent = '停止 MCP 轮询';
+            document.getElementById('btnConnectMcp').classList.add('danger');
+            document.getElementById('mcpStatus').classList.add('active');
+            document.getElementById('mcpStatusText').textContent = '轮询中 (300ms)';
+            log('开始轮询 MCP 服务器...');
 
+            // 静默轮询 300ms
+            mcpInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET', // 根据你的MCP规范可能需要 POST
+                        headers: {
+                            'Authorization': password,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                    
+                    const data = await response.json();
+                    
+                    // 如果 command 不为 null，则执行
+                    if (data && data.command) {
+                        const { action, value } = data.command;
+                        await sendCommand(action, value);
+                    }
+                } catch (error) {
+                    log('轮询出错: ' + error.message, 'error');
+                    stopMcp(); // 出错后为防死循环，建议停止或减缓轮询
+                }
+            }, 300);
+        }
+
+        function stopMcp() {
+            isMcpRunning = false;
+            clearInterval(mcpInterval);
+            document.getElementById('btnConnectMcp').textContent = '启动 MCP 轮询';
+            document.getElementById('btnConnectMcp').classList.remove('danger');
+            document.getElementById('mcpStatus').classList.remove('active');
+            document.getElementById('mcpStatusText').textContent = '已停止';
+            log('MCP 轮询已停止');
+        }
     </script>
 </body>
 </html>
