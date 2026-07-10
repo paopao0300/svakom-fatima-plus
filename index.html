@@ -1,1 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 玩具控制器 - 完美适配版</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { margin-top: 0; color: #333; font-size: 1.2rem; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+        input[type="range"] { width: 100%; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 1rem; width: 100%; margin-bottom: 10px; }
+        button:hover { background-color: #0056b3; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .control-item { background: #f1f3f5; padding: 15px; border-radius: 8px; text-align: center; }
+        #logArea { width: 100%; height: 200px; background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 10px; box-sizing: border-box; border-radius: 6px; overflow-y: auto; font-size: 0.85rem; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #ccc; margin-right: 5px; }
+        .status-dot.active { background-color: #28a745; }
+    </style>
+</head>
+<body>
 
+    <div class="card">
+        <h2>1. 连接 MCP 服务器</h2>
+        <div class="form-group">
+            <label>服务器 URL</label>
+            <input type="text" id="mcpUrl" value="https://ble-relay-template-production-37e3.up.railway.app">
+        </div>
+        <div class="form-group">
+            <label>连接密码</label>
+            <input type="password" id="mcpPassword" value="123456">
+        </div>
+        <button id="btnConnectMcp" onclick="toggleMcp()">启动 MCP 轮询</button>
+        <div><span class="status-dot" id="mcpStatus"></span> 服务器状态: <span id="mcpStatusText">未连接</span></div>
+    </div>
+
+    <div class="card">
+        <h2>2. 连接蓝牙玩具 (SL278H)</h2>
+        <button id="btnConnectBt" onclick="connectBluetooth()">连接蓝牙设备</button>
+        <div><span class="status-dot" id="btStatus"></span> 蓝牙状态: <span id="btStatusText">未连接</span></div>
+    </div>
+
+    <div class="card">
+        <h2>3. 手动控制与测试</h2>
+        <div class="controls">
+            <div class="control-item">
+                <label>震动 (0-10)</label>
+                <input type="range" id="vibrateSlider" min="0" max="10" value="0" onchange="sendTestCommand('vibrate', this.value)">
+                <span id="vibrateVal">0</span>
+            </div>
+            <div class="control-item">
+                <label>伸缩/摆动 (0-7)</label>
+                <input type="range" id="oscillateSlider" min="0" max="7" value="0" onchange="sendTestCommand('oscillate', this.value)">
+                <span id="oscillateVal">0</span>
+            </div>
+        </div>
+        <button class="danger" style="margin-top: 15px;" onclick="stopAll()">🛑 停止所有动作</button>
+    </div>
+
+    <div class="card">
+        <h2>运行日志</h2>
+        <div id="logArea"></div>
+    </div>
+
+    <audio id="keepAliveAudio" loop playsinline>
+        <source src="https://img.baibai.cv/f/dZymTQ/30min-osbvow%202.mp4" type="audio/mp4">
+    </audio>
+
+    <script>
+        const DEVICE_NAME = 'SL278H';
+        const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+        const TX_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+        let bluetoothDevice = null;
+        let txCharacteristic = null;
+        let mcpInterval = null;
+        let isMcpRunning = false;
+
+        const logArea = document.getElementById('logArea');
+        const audio = document.getElementById('keepAliveAudio');
+
+        function log(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.textContent = `[${time}] ${message}`;
+            if (type === 'error') div.style.color = '#ff4444';
+            if (type === 'cmd') div.style.color = '#00e5ff';
+            if (type === 'success') div.style.color = '#00ff00';
+            logArea.appendChild(div);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        async function connectBluetooth() {
+            try {
+                log('请求蓝牙设备...');
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: DEVICE_NAME }],
+                    optionalServices: [SERVICE_UUID]
+                });
+                bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+                    log('蓝牙已断开连接！', 'error');
+                    document.getElementById('btStatus').classList.remove('active');
+                    document.getElementById('btStatusText').textContent = '未连接';
+                    txCharacteristic = null;
+                });
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                txCharacteristic = await service.getCharacteristic(TX_CHAR_UUID);
+                
+                document.getElementById('btStatus').classList.add('active');
+                document.getElementById('btStatusText').textContent = '已连接';
+                log('蓝牙连接成功！', 'success');
+                audio.play().catch(() => log('请随便点一下页面触发音频保活', 'error'));
+            } catch (error) {
+                log('蓝牙连接失败: ' + error, 'error');
+            }
+        }
+
+        async function sendCommand(action, value) {
+            if (!txCharacteristic) return;
+            value = parseInt(value, 10) || 0;
+            let dataArray = null;
+
+            if(action === 'vibrate' || action === 'intensity') {
+                // 将 0-100 的强度映射到 0-10 档位
+                if(action === 'intensity') value = Math.round(value / 10);
+                value = Math.min(Math.max(value, 0), 10);
+                dataArray = new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, value, 0x00]);
+            } else if(action === 'oscillate') {
+                value = Math.min(Math.max(value, 0), 7);
+                dataArray = new Uint8Array([0x55, 0x08, 0x00, 0x00, value, 0x00, 0x00]);
+            } else if(action === 'stop') {
+                await sendCommand('vibrate', 0);
+                await sendCommand('oscillate', 0);
+                return;
+            }
+
+            if (dataArray) {
+                try {
+                    await txCharacteristic.writeValue(dataArray);
+                    log(`执行 ${action}: ${value}`, 'cmd');
+                } catch (error) {
+                    log(`发送指令失败: ${error}`, 'error');
+                }
+            }
+        }
+
+        async function stopAll() {
+            await sendCommand('stop', 0);
+        }
+
+        function sendTestCommand(action, value) {
+            sendCommand(action, value);
+            if (audio.paused) audio.play();
+        }
+
+        function toggleMcp() {
+            if (isMcpRunning) stopMcp();
+            else startMcp();
+        }
+
+        async function startMcp() {
+            const baseUrl = document.getElementById('mcpUrl').value.replace(/\/$/, '');
+            const password = document.getElementById('mcpPassword').value;
+            // 严格按照源码要求：拼接在 URL 后面
+            const fetchUrl = `${baseUrl}/toy-next?secret=${password}`;
+            
+            isMcpRunning = true;
+            document.getElementById('btnConnectMcp').textContent = '停止 MCP 轮询';
+            document.getElementById('btnConnectMcp').classList.add('danger');
+            document.getElementById('mcpStatus').classList.add('active');
+            document.getElementById('mcpStatusText').textContent = '轮询中...';
+            log('🚀 开始轮询服务器...');
+
+            let isFetching = false;
+            mcpInterval = setInterval(async () => {
+                if (isFetching) return; 
+                isFetching = true;
+
+                try {
+                    const response = await fetch(fetchUrl);
+
+                    if (response.status === 401) {
+                        throw new Error(`401 未授权 (密码不匹配)`);
+                    }
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    
+                    const data = await response.json();
+                    
+                    // 解析源码返回的格式 { command: { action, value, received } }
+                    if (data && data.command && data.command.action) {
+                        const cmd = data.command;
+                        log(`📥 收到云端指令: ${cmd.action} = ${cmd.value}`, 'success');
+                        await sendCommand(cmd.action, cmd.value);
+                    }
+                } catch (error) {
+                    log(`轮询异常: ${error.message}`, 'error');
+                } finally {
+                    isFetching = false;
+                }
+            }, 300);
+        }
+
+        function stopMcp() {
+            isMcpRunning = false;
+            if (mcpInterval) clearInterval(mcpInterval);
+            document.getElementById('btnConnectMcp').textContent = '启动 MCP 轮询';
+            document.getElementById('btnConnectMcp').classList.remove('danger');
+            document.getElementById('mcpStatus').classList.remove('active');
+            document.getElementById('mcpStatusText').textContent = '已停止';
+            log('已停止轮询');
+        }
+    </script>
+</body>
+</html>
