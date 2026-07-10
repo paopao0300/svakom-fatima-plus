@@ -34,7 +34,6 @@
         </div>
         <div class="form-group">
             <label>连接密码</label>
-            <!-- 默认密码已经帮你改成了 123456 -->
             <input type="password" id="mcpPassword" value="123456">
         </div>
         <button id="btnConnectMcp" onclick="toggleMcp()">启动 MCP 轮询</button>
@@ -104,6 +103,7 @@
             div.textContent = `[${time}] ${message}`;
             if (type === 'error') div.style.color = '#ff4444';
             if (type === 'cmd') div.style.color = '#00e5ff';
+            if (type === 'success') div.style.color = '#00ff00';
             logArea.appendChild(div);
             logArea.scrollTop = logArea.scrollHeight;
         }
@@ -129,7 +129,7 @@
                 txCharacteristic = await service.getCharacteristic(TX_CHAR_UUID);
                 
                 updateBtStatus(true);
-                log('蓝牙连接成功，设备就绪！');
+                log('蓝牙连接成功，设备就绪！', 'success');
                 
                 audio.play().catch(e => log('音频自动播放被拦截，请交互后重试', 'error'));
                 startKeepAlive();
@@ -220,30 +220,22 @@
             if (audio.paused) audio.play();
         }
 
-        // ================= 保活机制 =================
         function startKeepAlive() {
             if (keepAliveInterval) clearInterval(keepAliveInterval);
             keepAliveInterval = setInterval(async () => {
                 if (txCharacteristic) {
-                    try {
-                        // 防休眠空转
-                    } catch (e) {
-                        console.log("Keep alive error:", e);
-                    }
+                    try { /* 防休眠空转 */ } catch (e) {}
                 }
             }, 10000);
         }
 
-        // ================= MCP 轮询逻辑 =================
+        // ================= MCP 轮询与探测逻辑 =================
         function toggleMcp() {
-            if (isMcpRunning) {
-                stopMcp();
-            } else {
-                startMcp();
-            }
+            if (isMcpRunning) stopMcp();
+            else startMcp();
         }
 
-        function startMcp() {
+        async function startMcp() {
             const baseUrl = document.getElementById('mcpUrl').value.replace(/\/$/, '');
             const url = baseUrl + '/toy-next';
             const password = document.getElementById('mcpPassword').value;
@@ -253,52 +245,70 @@
                 return;
             }
 
-            // 防重复点击导致堆积
-            if (mcpInterval) {
-                clearInterval(mcpInterval);
+            if (mcpInterval) clearInterval(mcpInterval);
+            isMcpRunning = true;
+            document.getElementById('btnConnectMcp').textContent = '探测中...';
+            log('正在探测服务器接受哪种密码格式...');
+
+            // 预设 4 种常见的探测方案
+            const strategies = [
+                { name: '标准 Authorization', url: url, headers: { 'Authorization': password } },
+                { name: 'Bearer 令牌', url: url, headers: { 'Authorization': 'Bearer ' + password } },
+                { name: 'URL 参数 (token)', url: `${url}?token=${password}`, headers: {} },
+                { name: '无密码 (某些模板玩具端不需要密码)', url: url, headers: {} }
+            ];
+
+            let validStrategy = null;
+
+            // 挨个敲门，看哪个能进去
+            for (let s of strategies) {
+                try {
+                    const res = await fetch(s.url, { method: 'GET', headers: s.headers });
+                    if (res.status !== 401) { // 只要不是 401，就说明门开了
+                        validStrategy = s;
+                        log(`探测成功！服务器使用的是: [${s.name}]`, 'success');
+                        break;
+                    }
+                } catch (e) {
+                    // 忽略网络错误，继续测下一个
+                }
             }
 
-            isMcpRunning = true;
-            let isFetching = false;
-            
+            if (!validStrategy) {
+                log('❌ 4种常见密码格式全部被服务器拒绝 (依然401)。', 'error');
+                log('👉 请检查：1. Railway 是否真的部署完成了？ 2. 环境变量的名字是对的吗？', 'error');
+                stopMcp();
+                return;
+            }
+
+            // 探测成功，使用正确的方法开始正式轮询
             document.getElementById('btnConnectMcp').textContent = '停止 MCP 轮询';
             document.getElementById('btnConnectMcp').classList.add('danger');
             document.getElementById('mcpStatus').classList.add('active');
             document.getElementById('mcpStatusText').textContent = '轮询中 (300ms)';
-            log('开始轮询 MCP 服务器...');
+            log('🚀 正式启动轮询...');
 
+            let isFetching = false;
             mcpInterval = setInterval(async () => {
                 if (isFetching) return; 
                 isFetching = true;
 
                 try {
-                    // 大部分中继模板标准的鉴权头
-                    const response = await fetch(url, {
+                    const response = await fetch(validStrategy.url, {
                         method: 'GET',
-                        headers: {
-                            'Authorization': password,
-                            'x-password': password, // 兼容部分老模板
-                            'Content-Type': 'application/json'
-                        }
+                        headers: validStrategy.headers
                     });
 
-                    if (response.status === 401) {
-                        throw new Error(`HTTP Error: 401 (密码验证失败，请确认 Railway 上环境变量确实是 ${password}，且没有空格)`);
-                    }
-                    if (!response.ok) {
-                        throw new Error(`HTTP Error: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
                     
                     const data = await response.json();
-                    
-                    // 数据解析：只在收到有效指令时触发
                     if (data && data.command && data.command.action) {
                         const { action, value } = data.command;
                         await sendCommand(action, value);
                     }
                 } catch (error) {
-                    log('轮询出错: ' + error.message, 'error');
-                    stopMcp(); 
+                    // 如果轮询中断开，只打日志不刷屏
+                    console.log('轮询异常:', error.message);
                 } finally {
                     isFetching = false;
                 }
