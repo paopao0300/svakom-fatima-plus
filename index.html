@@ -25,7 +25,7 @@
     <div class="card">
         <h1>🔗 连接设置</h1>
         <div class="form-group">
-            <label for="mcpUrl">MCP 服务器地址 (需含 http://):</label>
+            <label for="mcpUrl">MCP 服务器地址 (需含 http:// 或 https://):</label>
             <input type="text" id="mcpUrl" value="http://127.0.0.1:3000" placeholder="例如: http://127.0.0.1:3000">
         </div>
         <button id="btnConnectBT">1. 连接蓝牙 (SL278H)</button>
@@ -62,10 +62,10 @@
 
         <div class="form-group">
             <div class="flex">
-                <label for="heatSlider">加热 (0 = 关, 1 = 开)</label>
+                <label for="heatSlider">加热 (0 - 5)</label>
                 <span id="heatValue">0</span>
             </div>
-            <input type="range" id="heatSlider" min="0" max="1" value="0">
+            <input type="range" id="heatSlider" min="0" max="5" value="0">
         </div>
 
         <button id="btnTest">发送测试</button>
@@ -137,18 +137,18 @@
             let dataArray;
             const val = parseInt(value, 10);
 
-            // 指令生成：如果不生效，请根据实际蓝牙抓包记录替换以下数组
+            // 指令协议（可根据实际设备情况微调）
             if (action.toLowerCase() === 'vibrate') {
-                // 震动
+                // 震动指令格式
                 dataArray = new Uint8Array([0x55, 0x04, 0x03, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'oscillate') {
-                // 伸缩
+                // 伸缩指令格式
                 dataArray = new Uint8Array([0x55, 0x04, 0x04, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'rotate') {
-                // 转动 (推测协议指令位为0x05)
+                // 转动指令格式 (推测值为 0x05)
                 dataArray = new Uint8Array([0x55, 0x04, 0x05, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'heat') {
-                // 加热 (推测协议指令位为0x06)
+                // 加热指令格式 (推测值为 0x06)
                 dataArray = new Uint8Array([0x55, 0x04, 0x06, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'stop') {
                 // 停止所有格式
@@ -219,37 +219,29 @@
         const rotSlider = document.getElementById('rotateSlider');
         const heatSlider = document.getElementById('heatSlider');
         
-        vibeSlider.addEventListener('input', (e) => {
-            document.getElementById('vibrateValue').innerText = e.target.value;
-        });
-        
-        oscSlider.addEventListener('input', (e) => {
-            document.getElementById('oscillateValue').innerText = e.target.value;
-        });
+        // 滑块数值实时显示
+        vibeSlider.addEventListener('input', (e) => document.getElementById('vibrateValue').innerText = e.target.value);
+        oscSlider.addEventListener('input', (e) => document.getElementById('oscillateValue').innerText = e.target.value);
+        rotSlider.addEventListener('input', (e) => document.getElementById('rotateValue').innerText = e.target.value);
+        heatSlider.addEventListener('input', (e) => document.getElementById('heatValue').innerText = e.target.value);
 
-        rotSlider.addEventListener('input', (e) => {
-            document.getElementById('rotateValue').innerText = e.target.value;
-        });
-
-        heatSlider.addEventListener('input', (e) => {
-            document.getElementById('heatValue').innerText = e.target.value == "1" ? "开 (1)" : "关 (0)";
-        });
-
+        // 测试按钮：发送当前所有非零滑块的值
         document.getElementById('btnTest').addEventListener('click', async () => {
             const v = vibeSlider.value;
             const o = oscSlider.value;
             const r = rotSlider.value;
             const h = heatSlider.value;
             
-            let tested = false;
-            if (v > 0) { await sendToyCommand('vibrate', v); tested = true; }
-            if (o > 0) { await sendToyCommand('oscillate', o); tested = true; }
-            if (r > 0) { await sendToyCommand('rotate', r); tested = true; }
-            if (h > 0) { await sendToyCommand('heat', h); tested = true; }
+            let sent = false;
+            if (v > 0) { await sendToyCommand('vibrate', v); sent = true; }
+            if (o > 0) { await sendToyCommand('oscillate', o); sent = true; }
+            if (r > 0) { await sendToyCommand('rotate', r); sent = true; }
+            if (h > 0) { await sendToyCommand('heat', h); sent = true; }
             
-            if (!tested) addLog('⚠️ 请先拖动滑块设置测试力度/开启功能。');
+            if (!sent) addLog('⚠️ 请先拖动滑块设置测试力度。');
         });
 
+        // 停止按钮：重置所有滑块并发送停止指令
         document.getElementById('btnStopToy').addEventListener('click', async () => {
             vibeSlider.value = 0;
             oscSlider.value = 0;
