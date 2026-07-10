@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 玩具控制器 (MCP 蓝牙中继)</title>
+    <title>AI 玩具控制器 (MCP 蓝牙中继) - 雷达版</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -83,7 +83,6 @@
     </audio>
 
     <script>
-        // 蓝牙配置参数
         const DEVICE_NAME = 'SL278H';
         const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
         const TX_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
@@ -108,7 +107,6 @@
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // ================= 蓝牙核心逻辑 =================
         async function connectBluetooth() {
             try {
                 log('请求蓝牙设备: ' + DEVICE_NAME);
@@ -118,22 +116,18 @@
                 });
 
                 bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
-                
-                log('连接 GATT 服务器...');
                 const server = await bluetoothDevice.gatt.connect();
-                
-                log('获取服务: ' + SERVICE_UUID);
                 const service = await server.getPrimaryService(SERVICE_UUID);
-                
-                log('获取写入特征值 (TX): ' + TX_CHAR_UUID);
                 txCharacteristic = await service.getCharacteristic(TX_CHAR_UUID);
                 
                 updateBtStatus(true);
                 log('蓝牙连接成功，设备就绪！', 'success');
-                
                 audio.play().catch(e => log('音频自动播放被拦截，请交互后重试', 'error'));
-                startKeepAlive();
-
+                
+                if (keepAliveInterval) clearInterval(keepAliveInterval);
+                keepAliveInterval = setInterval(async () => {
+                    if (txCharacteristic) try { } catch (e) {}
+                }, 10000);
             } catch (error) {
                 log('蓝牙连接失败: ' + error, 'error');
                 updateBtStatus(false);
@@ -160,7 +154,6 @@
             }
         }
 
-        // ================= 指令发送逻辑 =================
         async function sendCommand(action, value) {
             if (!txCharacteristic) {
                 log('未连接蓝牙设备，无法发送指令', 'error');
@@ -194,9 +187,6 @@
                     value = Math.min(Math.max(value, 0), 1);
                     log(`⚠️ 加热指令尚未配置，当前值: ${value}`, 'error');
                     return;
-                default:
-                    log('未知指令类型: ' + action, 'error');
-                    return;
             }
 
             try {
@@ -220,16 +210,6 @@
             if (audio.paused) audio.play();
         }
 
-        function startKeepAlive() {
-            if (keepAliveInterval) clearInterval(keepAliveInterval);
-            keepAliveInterval = setInterval(async () => {
-                if (txCharacteristic) {
-                    try { /* 防休眠空转 */ } catch (e) {}
-                }
-            }, 10000);
-        }
-
-        // ================= MCP 轮询与探测逻辑 =================
         function toggleMcp() {
             if (isMcpRunning) stopMcp();
             else startMcp();
@@ -250,38 +230,33 @@
             document.getElementById('btnConnectMcp').textContent = '探测中...';
             log('正在探测服务器接受哪种密码格式...');
 
-            // 预设 4 种常见的探测方案
             const strategies = [
                 { name: '标准 Authorization', url: url, headers: { 'Authorization': password } },
                 { name: 'Bearer 令牌', url: url, headers: { 'Authorization': 'Bearer ' + password } },
-                { name: 'URL 参数 (token)', url: `${url}?token=${password}`, headers: {} },
-                { name: '无密码 (某些模板玩具端不需要密码)', url: url, headers: {} }
+                { name: 'URL 参数', url: `${url}?token=${password}`, headers: {} },
+                { name: '无密码', url: url, headers: {} }
             ];
 
             let validStrategy = null;
 
-            // 挨个敲门，看哪个能进去
             for (let s of strategies) {
                 try {
                     const res = await fetch(s.url, { method: 'GET', headers: s.headers });
-                    if (res.status !== 401) { // 只要不是 401，就说明门开了
+                    if (res.status !== 401) {
                         validStrategy = s;
                         log(`探测成功！服务器使用的是: [${s.name}]`, 'success');
                         break;
                     }
-                } catch (e) {
-                    // 忽略网络错误，继续测下一个
-                }
+                } catch (e) {}
             }
 
             if (!validStrategy) {
                 log('❌ 4种常见密码格式全部被服务器拒绝 (依然401)。', 'error');
-                log('👉 请检查：1. Railway 是否真的部署完成了？ 2. 环境变量的名字是对的吗？', 'error');
+                log('👉 请检查：Railway 环境变量密码是否是 123456？是否多敲了空格？', 'error');
                 stopMcp();
                 return;
             }
 
-            // 探测成功，使用正确的方法开始正式轮询
             document.getElementById('btnConnectMcp').textContent = '停止 MCP 轮询';
             document.getElementById('btnConnectMcp').classList.add('danger');
             document.getElementById('mcpStatus').classList.add('active');
@@ -307,7 +282,6 @@
                         await sendCommand(action, value);
                     }
                 } catch (error) {
-                    // 如果轮询中断开，只打日志不刷屏
                     console.log('轮询异常:', error.message);
                 } finally {
                     isFetching = false;
