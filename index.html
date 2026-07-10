@@ -1,16 +1,25 @@
+没问题！我已经将转动和加热功能加入到了控制面板中，同时也把你的 MCP 服务器地址（`ble-relay-template-production-37e3.up.railway.app`）和密码（`896258`）默认配置进去了。
+
+由于你之前提供的协议中没有明确指出“转动”和“加热”的精确 16 进制指令，我**基于 Svakom 设备的标准协议格式为你做出了合理推测**（通常是顺延操作位）。如果你发现这两个功能按下去设备没反应，你可能需要根据实际抓包的数据替换代码中对应的 `Uint8Array` 数组。
+
+另外，我在 `fetch` 请求中添加了密码的发送逻辑。默认通过 HTTP Header 发送，如果你使用的这个 Railway 模板有特定的密码传递规则（比如通过 URL 参数 `?password=...`），你可以在代码的 `pollMCP` 函数中微调。
+
+以下是为你更新的完整中继 HTML 代码：
+
+```html
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Svakom Fatima Plus 蓝牙 MCP 中继</title>
+    <title>Svakom Fatima Plus 蓝牙 MCP 中继 (完整版)</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; color: #333; }
         .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1, h2 { font-size: 1.2rem; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 0; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
         input[type="range"] { width: 100%; }
         button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; margin-right: 10px; margin-bottom: 10px; }
         button:hover { background-color: #0056b3; }
@@ -25,8 +34,12 @@
     <div class="card">
         <h1>🔗 连接设置</h1>
         <div class="form-group">
-            <label for="mcpUrl">MCP 服务器地址 (需含 http:// 或 https://):</label>
-            <input type="text" id="mcpUrl" value="http://127.0.0.1:3000" placeholder="例如: http://127.0.0.1:3000">
+            <label for="mcpUrl">MCP 服务器地址:</label>
+            <input type="text" id="mcpUrl" value="https://ble-relay-template-production-37e3.up.railway.app">
+        </div>
+        <div class="form-group">
+            <label for="mcpPassword">连接密码 (Authorization Header):</label>
+            <input type="password" id="mcpPassword" value="896258">
         </div>
         <button id="btnConnectBT">1. 连接蓝牙 (SL278H)</button>
         <button id="btnStartMCP">2. 启动 MCP 轮询</button>
@@ -62,10 +75,10 @@
 
         <div class="form-group">
             <div class="flex">
-                <label for="heatSlider">加热 (0 - 5)</label>
+                <label for="heatSlider">加热 (0 关, 1 开)</label>
                 <span id="heatValue">0</span>
             </div>
-            <input type="range" id="heatSlider" min="0" max="5" value="0">
+            <input type="range" id="heatSlider" min="0" max="1" value="0">
         </div>
 
         <button id="btnTest">发送测试</button>
@@ -80,7 +93,7 @@
     <video src="https://img.baibai.cv/f/dZymTQ/30min-osbvow%202.mp4" loop autoplay playsinline muted style="display:none;"></video>
 
     <script>
-        // 蓝牙配置参数 (必须使用字符串格式)
+        // 蓝牙配置参数
         const DEVICE_NAME = 'SL278H';
         const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
         const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
@@ -137,21 +150,17 @@
             let dataArray;
             const val = parseInt(value, 10);
 
-            // 指令协议（可根据实际设备情况微调）
             if (action.toLowerCase() === 'vibrate') {
-                // 震动指令格式
                 dataArray = new Uint8Array([0x55, 0x04, 0x03, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'oscillate') {
-                // 伸缩指令格式
                 dataArray = new Uint8Array([0x55, 0x04, 0x04, 0x00, 0x01, val]);
             } else if (action.toLowerCase() === 'rotate') {
-                // 转动指令格式 (推测值为 0x05)
-                dataArray = new Uint8Array([0x55, 0x04, 0x05, 0x00, 0x01, val]);
+                // 注：推测格式，若无反应需替换为实际转动抓包指令
+                dataArray = new Uint8Array([0x55, 0x04, 0x05, 0x00, 0x01, val]); 
             } else if (action.toLowerCase() === 'heat') {
-                // 加热指令格式 (推测值为 0x06)
-                dataArray = new Uint8Array([0x55, 0x04, 0x06, 0x00, 0x01, val]);
+                // 注：推测格式，若无反应需替换为实际加热抓包指令
+                dataArray = new Uint8Array([0x55, 0x04, 0x06, 0x00, 0x01, val]); 
             } else if (action.toLowerCase() === 'stop') {
-                // 停止所有格式
                 dataArray = new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x00, 0x00]);
             } else {
                 addLog(`⚠️ 未知功能: ${action}`);
@@ -160,7 +169,6 @@
 
             try {
                 await gattCharacteristic.writeValue(dataArray);
-                // 静默运行时，只有在收到有效指令时才打印日志
                 addLog(`📤 发送指令: ${action} = ${val}`);
             } catch (error) {
                 addLog(`❌ 发送失败: ${error.message}`);
@@ -172,13 +180,22 @@
             if (!isPolling) return;
 
             const baseUrl = document.getElementById('mcpUrl').value.replace(/\/$/, "");
+            const password = document.getElementById('mcpPassword').value;
             
             try {
-                const response = await fetch(`${baseUrl}/toy-next`);
+                // 构建请求头，携带密码
+                const headers = { 'Content-Type': 'application/json' };
+                if (password) {
+                    headers['Authorization'] = `Bearer ${password}`; 
+                    // 备用方案：如果服务器要求直接传密码而不是 Bearer 格式，可以使用 headers['Authorization'] = password;
+                }
+
+                const response = await fetch(`${baseUrl}/toy-next`, { headers });
+                
                 if (response.ok) {
                     const json = await response.json();
                     
-                    // 如果返回 {"command": null}，静默跳过，不打日志
+                    // 静默跳过空指令
                     if (json.command && json.command !== null) {
                         const action = json.command.action;
                         const value = json.command.value;
@@ -216,20 +233,18 @@
         // ================= 界面控制逻辑 =================
         const vibeSlider = document.getElementById('vibrateSlider');
         const oscSlider = document.getElementById('oscillateSlider');
-        const rotSlider = document.getElementById('rotateSlider');
+        const rotateSlider = document.getElementById('rotateSlider');
         const heatSlider = document.getElementById('heatSlider');
         
-        // 滑块数值实时显示
         vibeSlider.addEventListener('input', (e) => document.getElementById('vibrateValue').innerText = e.target.value);
         oscSlider.addEventListener('input', (e) => document.getElementById('oscillateValue').innerText = e.target.value);
-        rotSlider.addEventListener('input', (e) => document.getElementById('rotateValue').innerText = e.target.value);
-        heatSlider.addEventListener('input', (e) => document.getElementById('heatValue').innerText = e.target.value);
+        rotateSlider.addEventListener('input', (e) => document.getElementById('rotateValue').innerText = e.target.value);
+        heatSlider.addEventListener('input', (e) => document.getElementById('heatValue').innerText = e.target.value == 1 ? '开' : '关');
 
-        // 测试按钮：发送当前所有非零滑块的值
         document.getElementById('btnTest').addEventListener('click', async () => {
             const v = vibeSlider.value;
             const o = oscSlider.value;
-            const r = rotSlider.value;
+            const r = rotateSlider.value;
             const h = heatSlider.value;
             
             let sent = false;
@@ -238,24 +253,21 @@
             if (r > 0) { await sendToyCommand('rotate', r); sent = true; }
             if (h > 0) { await sendToyCommand('heat', h); sent = true; }
             
-            if (!sent) addLog('⚠️ 请先拖动滑块设置测试力度。');
+            if (!sent) addLog('⚠️ 请先拖动至少一个滑块来设置测试力度。');
         });
 
-        // 停止按钮：重置所有滑块并发送停止指令
         document.getElementById('btnStopToy').addEventListener('click', async () => {
-            vibeSlider.value = 0;
-            oscSlider.value = 0;
-            rotSlider.value = 0;
-            heatSlider.value = 0;
-            
+            vibeSlider.value = 0; oscSlider.value = 0;
+            rotateSlider.value = 0; heatSlider.value = 0;
             document.getElementById('vibrateValue').innerText = '0';
             document.getElementById('oscillateValue').innerText = '0';
             document.getElementById('rotateValue').innerText = '0';
-            document.getElementById('heatValue').innerText = '0';
-            
+            document.getElementById('heatValue').innerText = '关';
             await sendToyCommand('stop', 0);
         });
 
     </script>
 </body>
 </html>
+
+```
