@@ -105,7 +105,20 @@ app.post('/', (req, res) => {
               type: 'object',
               properties: {}
             }
+          },
+          // 👇 这里是为你新增的吮吸工具 👇
+          {
+            name: 'toy_set_suck',
+            description: '设置吮吸强度 (0-100)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                value: { type: 'number', minimum: 0, maximum: 100 }
+              },
+              required: ['value']
+            }
           }
+          // 👆 新增结束 👆
         ]
       }
     });
@@ -130,6 +143,22 @@ app.post('/', (req, res) => {
           }
         });
       }
+
+      // 👇 这里是为你新增的吮吸执行逻辑 👇
+      if (toolName === 'toy_set_suck') {
+        const val = typeof args.value === 'number' ? args.value : 0;
+        toyQueue.command = { action: 'suck', value: val, received: Date.now() };
+        toyQueue.timestamp = Date.now();
+        console.log(`📥 存入队列: 吮吸强度 ${val}%`);
+        return res.json({
+          jsonrpc: '2.0',
+          id: id,
+          result: {
+            content: [{ type: 'text', text: `✅ 吮吸强度设为 ${val}%` }]
+          }
+        });
+      }
+      // 👆 新增结束 👆
 
       if (toolName === 'toy_stop') {
         toyQueue.command = { action: 'stop', value: 0, received: Date.now() };
