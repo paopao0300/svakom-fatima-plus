@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 玩具控制器 - 双持适配版 (SL278H & RX)</title>
+    <title>AI 玩具控制器 - 双持同名版</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -24,7 +24,7 @@
         .status-dot.active { background-color: #28a745; }
         .flex-buttons { display: flex; gap: 10px; }
         .flex-buttons button { margin-bottom: 0; }
-        .dev-info { font-size: 0.8rem; color: #666; margin-top: -5px; margin-bottom: 15px; line-height: 1.4; }
+        .dev-info { font-size: 0.85rem; color: #d9534f; margin-top: -5px; margin-bottom: 15px; line-height: 1.5; background: #fdf0f0; padding: 10px; border-radius: 6px;}
     </style>
 </head>
 <body>
@@ -46,31 +46,33 @@
     <div class="card">
         <h2>2. 连接蓝牙玩具</h2>
         <div class="dev-info">
-            请分别点击下方按钮连接对应的物理玩具。
+            💡 <strong>连接技巧：</strong><br>
+            先点【连接 1 号】，在弹出的两个设备里<strong>随便选一个</strong>。<br>
+            再点【连接 2 号】，由于第一个已经被隐藏，直接选<strong>剩下的那一个</strong>即可！
         </div>
         <div class="flex-buttons" style="margin-bottom: 10px;">
-            <button id="btnConnectBtDev1" onclick="connectBluetooth('dev1')">🔗 连接体内玩具 (SL278H)</button>
-            <button id="btnConnectBtDev2" onclick="connectBluetooth('dev2')" style="background-color: #ff6b6b;">🔗 连接体外玩具 (SL278H-RX)</button>
+            <button id="btnConnectBtDev1" onclick="connectBluetooth('dev1')">🔗 连接 1 号玩具 (负责震动/伸缩)</button>
+            <button id="btnConnectBtDev2" onclick="connectBluetooth('dev2')" style="background-color: #ff6b6b;">🔗 连接 2 号玩具 (负责吮吸)</button>
         </div>
-        <div style="margin-bottom: 5px;"><span class="status-dot" id="btStatusDev1"></span> 体内状态: <span id="btStatusTextDev1">未连接</span></div>
-        <div><span class="status-dot" id="btStatusDev2"></span> 体外状态: <span id="btStatusTextDev2">未连接</span></div>
+        <div style="margin-bottom: 5px;"><span class="status-dot" id="btStatusDev1"></span> 1号状态: <span id="btStatusTextDev1">未连接</span></div>
+        <div><span class="status-dot" id="btStatusDev2"></span> 2号状态: <span id="btStatusTextDev2">未连接</span></div>
     </div>
 
     <div class="card">
         <h2>3. 手动控制与测试</h2>
         <div class="controls">
             <div class="control-item">
-                <label>震动 (体内 0-10)</label>
+                <label>震动 (发送给 1 号玩具)</label>
                 <input type="range" id="vibrateSlider" min="0" max="10" value="0" onchange="sendTestCommand('vibrate', this.value)">
                 <span id="vibrateVal">0</span>
             </div>
             <div class="control-item">
-                <label>伸缩 (体内 0-7)</label>
+                <label>伸缩 (发送给 1 号玩具)</label>
                 <input type="range" id="oscillateSlider" min="0" max="7" value="0" onchange="sendTestCommand('oscillate', this.value)">
                 <span id="oscillateVal">0</span>
             </div>
             <div class="suck-item">
-                <label>🔥 吮吸 (体外 0-100%)</label>
+                <label>🔥 吮吸 (发送给 2 号玩具)</label>
                 <input type="range" id="suckSlider" min="0" max="100" value="0" onchange="sendTestCommand('suck', this.value)">
                 <span id="suckVal">0</span> %
             </div>
@@ -88,16 +90,14 @@
     </audio>
 
     <script>
-        // 精准定义各自的蓝牙广播名字
-        const NAME_INTERNAL = 'SL278H';
-        const NAME_EXTERNAL = 'SL278H-RX'; // 修正为正确的体外名称
+        // 根据截图，两个设备名字完全一样，都叫 SL278H
+        const TARGET_NAME = 'SL278H'; 
         
         const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
         const TX_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
-        // 分别存储体内和体外的写特性通道
-        let txCharDev1 = null; // 负责震动/伸缩 (体内)
-        let txCharDev2 = null; // 负责吮吸 (体外)
+        let txCharDev1 = null; 
+        let txCharDev2 = null; 
         
         let mcpInterval = null;
         let isMcpRunning = false;
@@ -120,27 +120,25 @@
         async function connectBluetooth(devId) {
             try {
                 const isDev1 = devId === 'dev1';
-                const typeName = isDev1 ? '体内' : '体外';
-                const targetName = isDev1 ? NAME_INTERNAL : NAME_EXTERNAL;
+                const devLabel = isDev1 ? '1 号 (震动/伸缩)' : '2 号 (吮吸)';
                 const statusDotId = isDev1 ? 'btStatusDev1' : 'btStatusDev2';
                 const statusTextId = isDev1 ? 'btStatusTextDev1' : 'btStatusTextDev2';
                 
-                log(`正在请求 ${typeName} 设备 [${targetName}]...`);
+                log(`正在请求连接 ${devLabel}... 请在弹窗中选择玩具。`);
                 
-                // 根据对应设备名做精准过滤
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: targetName }],
+                    filters: [{ name: TARGET_NAME }],
                     optionalServices: [SERVICE_UUID]
                 });
                 
                 device.addEventListener('gattserverdisconnected', () => {
-                    log(`${typeName}设备 [${targetName}] 已断开连接！`, 'error');
+                    log(`${devLabel} 已断开连接！`, 'error');
                     document.getElementById(statusDotId).classList.remove('active');
                     document.getElementById(statusTextId).textContent = '未连接';
                     if(isDev1) txCharDev1 = null; else txCharDev2 = null;
                 });
 
-                log(`正在连接到 ${targetName}...`);
+                log(`正在建立连接...`);
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 const characteristic = await service.getCharacteristic(TX_CHAR_UUID);
@@ -154,10 +152,9 @@
                 document.getElementById(statusDotId).classList.add('active');
                 document.getElementById(statusTextId).textContent = '已连接';
                 
-                log(`${typeName}设备 [${targetName}] 连接成功！`, 'success');
+                log(`${devLabel} 连接成功！`, 'success');
                 audio.play().catch(() => {});
 
-                // 防休眠
                 if (keepAliveInterval) clearInterval(keepAliveInterval);
                 keepAliveInterval = setInterval(() => {
                     try {} catch (e) {}
@@ -174,18 +171,17 @@
             let targetChar = null;
             let typeName = '';
 
-            // 指令分流：震动伸缩控制体内(Dev1)，吮吸控制体外(Dev2)
             if (action === 'vibrate' || action === 'intensity') {
                 if (action === 'intensity') value = Math.round(value / 10);
                 value = Math.min(Math.max(value, 0), 10);
                 dataArray = new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, value, 0x00]);
                 targetChar = txCharDev1;
-                typeName = '体内 (震动)';
+                typeName = '1 号 (震动)';
             } else if (action === 'oscillate') {
                 value = Math.min(Math.max(value, 0), 7);
                 dataArray = new Uint8Array([0x55, 0x08, 0x00, 0x00, value, 0x00, 0x00]);
                 targetChar = txCharDev1;
-                typeName = '体内 (伸缩)';
+                typeName = '1 号 (伸缩)';
             } 
             else if (action === 'suck') {
                 value = Math.min(Math.max(value, 0), 100);
@@ -196,7 +192,7 @@
                     dataArray = new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x01, mappedValue, 0xAA]);
                 }
                 targetChar = txCharDev2;
-                typeName = '体外 (吮吸)';
+                typeName = '2 号 (吮吸)';
             } else if (action === 'stop') {
                 if (txCharDev1) {
                     await txCharDev1.writeValue(new Uint8Array([0x55, 0x03, 0x00, 0x00, 0x01, 0, 0x00]));
@@ -205,13 +201,13 @@
                 if (txCharDev2) {
                     await txCharDev2.writeValue(new Uint8Array([0x55, 0x04, 0x00, 0x00, 0x00, 0x00, 0xAA]));
                 }
-                log('已停止所有设备动作。', 'cmd');
+                log('已停止所有动作。', 'cmd');
                 return;
             }
 
             if (dataArray) {
                 if (!targetChar) {
-                    log(`⚠️ 无法执行 ${action}，因为对应的 ${typeName} 设备未连接！`, 'error');
+                    log(`⚠️ 无法执行 ${action}，${typeName} 设备未连接！`, 'error');
                     return;
                 }
                 try {
